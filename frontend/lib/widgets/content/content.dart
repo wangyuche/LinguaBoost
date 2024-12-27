@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../tts/tts.dart';
 
 class AdvancedParagraphReadingWidget extends StatefulWidget {
   final List<String> paragraphs;
@@ -16,11 +17,11 @@ class AdvancedParagraphReadingWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<AdvancedParagraphReadingWidget> createState() => 
+  State<AdvancedParagraphReadingWidget> createState() =>
       _AdvancedParagraphReadingWidgetState();
 }
 
-class _AdvancedParagraphReadingWidgetState 
+class _AdvancedParagraphReadingWidgetState
     extends State<AdvancedParagraphReadingWidget> {
   final ScrollController _scrollController = ScrollController();
   int _currentReadIndex = 0;
@@ -31,17 +32,20 @@ class _AdvancedParagraphReadingWidgetState
   Timer? _autoPlayTimer;
   // 添加新的控制變量
   bool _ignoreScroll = false;
-  
+  bool _Playing = false;
   @override
   void initState() {
     super.initState();
     // 為每個段落創建一個key
     _paragraphKeys.addAll(
-      List.generate(widget.paragraphs.length, (index) => GlobalKey())
-    );
+        List.generate(widget.paragraphs.length, (index) => GlobalKey()));
 
     // 監聽滾動事件
     _scrollController.addListener(_onScroll);
+
+    // Initialize TTS once and set initial text
+    TtsService.init();
+    TtsService.setCompletionHandler(_onTtsComplete);
   }
 
   void _onScroll() {
@@ -52,17 +56,19 @@ class _AdvancedParagraphReadingWidgetState
   void _toggleAutoPlay() {
     setState(() {
       _isAutoPlaying = !_isAutoPlaying;
-      
+
       if (_isAutoPlaying) {
         // 如果是在最後一段，則重置到第一段
         if (_currentReadIndex >= widget.paragraphs.length - 1) {
-          _ignoreScroll = true;  // 設置忽略滾動
+          _ignoreScroll = true; // 設置忽略滾動
           _currentReadIndex = 0;
-          _scrollController.animateTo(
+          _scrollController
+              .animateTo(
             0,
             duration: const Duration(milliseconds: 500),
             curve: Curves.easeInOut,
-          ).then((_) {
+          )
+              .then((_) {
             setState(() {
               _ignoreScroll = false;
             });
@@ -79,35 +85,55 @@ class _AdvancedParagraphReadingWidgetState
 
   void _startAutoPlay() {
     _autoPlayTimer?.cancel();
-    _autoPlayTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (_currentReadIndex >= widget.paragraphs.length - 1) {
-        _stopAutoPlay();
-        return;
-      }
+    if (_currentReadIndex == 0 && !_Playing) {
+      _Playing = true;
+      TtsService.setText(widget.paragraphs[_currentReadIndex]);
+    }
+    // Just play the current paragraph since text is already set
+    TtsService.play();
+  }
 
+  // Add new method for TTS playback
+  void _playCurrentParagraph() {
+    if (_currentReadIndex >= widget.paragraphs.length) {
+      _stopAutoPlay();
+      return;
+    }
+
+    TtsService.play();
+    _scrollToParagraph(_currentReadIndex);
+  }
+
+  // Add TTS completion handler
+  void _onTtsComplete() {
+    if (_isAutoPlaying && _currentReadIndex < widget.paragraphs.length - 1) {
       setState(() {
+        _Playing = false;
         _currentReadIndex++;
+        // Set text for next paragraph after completion
+        TtsService.setText(widget.paragraphs[_currentReadIndex]);
       });
-      
-      // Scroll to the new paragraph after changing the index
-      _scrollToParagraph(_currentReadIndex);
-    });
+      _playCurrentParagraph();
+    } else {
+      _stopAutoPlay();
+    }
   }
 
   // Add new helper method to handle scrolling
   void _scrollToParagraph(int index) {
     final currentKey = _paragraphKeys[index];
-    final RenderBox? renderBox = 
+    final RenderBox? renderBox =
         currentKey.currentContext?.findRenderObject() as RenderBox?;
-    
+
     if (renderBox != null) {
       final position = renderBox.localToGlobal(Offset.zero);
       final viewportHeight = _scrollController.position.viewportDimension;
       final maxScroll = _scrollController.position.maxScrollExtent;
-      
-      double targetScroll = _scrollController.offset + position.dy - (viewportHeight / 2);
+
+      double targetScroll =
+          _scrollController.offset + position.dy - (viewportHeight / 2);
       targetScroll = targetScroll.clamp(0, maxScroll);
-      
+
       _scrollController.animateTo(
         targetScroll,
         duration: const Duration(milliseconds: 500),
@@ -117,8 +143,7 @@ class _AdvancedParagraphReadingWidgetState
   }
 
   void _stopAutoPlay() {
-    _autoPlayTimer?.cancel();
-    _autoPlayTimer = null;
+    TtsService.pause();
     setState(() {
       _isAutoPlaying = false;
     });
@@ -126,7 +151,7 @@ class _AdvancedParagraphReadingWidgetState
 
   @override
   void dispose() {
-    _autoPlayTimer?.cancel();
+    TtsService.stop();
     _scrollController.dispose();
     super.dispose();
   }
@@ -163,8 +188,8 @@ class _AdvancedParagraphReadingWidgetState
                     widget.paragraphs[index],
                     key: _paragraphKeys[index],
                     style: TextStyle(
-                      color: index == _currentReadIndex 
-                          ? widget.readColor 
+                      color: index == _currentReadIndex
+                          ? widget.readColor
                           : widget.unreadColor,
                       fontSize: 16,
                     ),

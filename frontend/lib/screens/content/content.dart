@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../widgets/content/conent.dart';
+import '../../widgets/content/content.dart';
 
 class ContentScreen extends StatelessWidget {
   const ContentScreen({super.key});
