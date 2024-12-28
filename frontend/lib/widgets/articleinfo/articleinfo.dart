@@ -1,16 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ArticleInfo extends StatelessWidget {
   final String title;
   final double difficulty;
+  final String id;
   final List<String> paragraphs;
 
   const ArticleInfo({
     super.key,
     required this.title,
     required this.difficulty,
+    required this.id,
     this.paragraphs = const [],
   }) : assert(difficulty >= 1 && difficulty <= 5);
+
+  Future<Map<String, dynamic>> fetchArticleContent() async {
+    final response = await http.get(
+      Uri.parse('https://linguaboost.uroi.xyz/articles/$id.json'),
+    );
+
+    if (response.statusCode == 200) {
+      final String decodedBody = utf8.decode(response.bodyBytes);
+      final Map<String, dynamic> data = json.decode(decodedBody);
+      if (data['content'] is String) {
+        data['content'] = (data['content'] as String)
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
+      }
+      return data;
+    } else {
+      throw Exception('Failed to load article content');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,27 +53,39 @@ class ArticleInfo extends StatelessWidget {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 81,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Text(
-                '難度：',
-                style: TextStyle(
-                  fontSize: 63,
-                  color: Colors.grey,
+          Container(
+            width: 800,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 81,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              DifficultyStars(difficulty: difficulty, size: 48),
-            ],
+                const SizedBox(height: 16),
+                Container(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text(
+                        '難度：',
+                        style: TextStyle(
+                          fontSize: 63,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      DifficultyStars(difficulty: difficulty, size: 48),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -57,24 +93,40 @@ class ArticleInfo extends StatelessWidget {
   }
 
   Widget buildTile(BuildContext context) {
-    return ListTile(
-      title: Text(
-        title,
-        style: const TextStyle(fontSize: 24),
-      ),
-      subtitle: Row(
-        children: [
-          const Text('難度: '),
-          DifficultyStars(difficulty: difficulty, size: 16),
-        ],
-      ),
-      onTap: () => Navigator.of(context).pushNamed(
-        '/content',
-        arguments: {
-          'title': title,
-          'difficulty': difficulty,
-          'paragraphs': paragraphs,
-        },
+    return Center(
+      child: SizedBox(
+        width: 600,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 24),
+            textAlign: TextAlign.start,
+          ),
+          subtitle: Column(
+            children: [
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  const Text('難度: '),
+                  DifficultyStars(difficulty: difficulty, size: 16),
+                ],
+              ),
+            ],
+          ),
+          onTap: () async {
+            final contents = await fetchArticleContent();
+            Navigator.of(context).pushNamed(
+              '/content',
+              arguments: {
+                'title': title,
+                'difficulty': difficulty,
+                'paragraphs': contents['content'],
+              },
+            );
+          },
+        ),
       ),
     );
   }
