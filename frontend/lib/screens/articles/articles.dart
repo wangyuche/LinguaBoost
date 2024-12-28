@@ -3,32 +3,50 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../../widgets/articleinfo/articleinfo.dart';
 
-String getYearAndWeek() {
+String getYearAndWeek({int weeksAgo = 0}) {
   final now = DateTime.now();
-  final firstDayOfYear = DateTime(now.year, 1, 1);
-  final weekNumber = ((now.difference(firstDayOfYear).inDays + firstDayOfYear.weekday - 1) / 7).ceil();
+  final targetDate = now.subtract(Duration(days: 7 * weeksAgo));
+  final firstDayOfYear = DateTime(targetDate.year, 1, 1);
+  final weekNumber = ((targetDate.difference(firstDayOfYear).inDays + firstDayOfYear.weekday - 1) / 7).ceil();
   
-  return '${now.year}$weekNumber.json';
+  return '${targetDate.year}$weekNumber.json';
 }
 
 Future<List<ArticleInfo>> fetchArticles() async {
-  final filename = getYearAndWeek();
-  final response = await http.get(Uri.parse('https://linguaboost.uroi.xyz/$filename'));
+  List<ArticleInfo> allArticles = [];
   
-  if (response.statusCode == 200) {
-    final Map<String, dynamic> jsonData = json.decode(response.body);
-    final List<dynamic> articles = jsonData['Data'];
-    
-    return articles.map((article) => ArticleInfo(
-      title: article['title'],
-      difficulty: article['difficulty'].toDouble(),
-      id: article['id'],
-      // 暫時使用空段落列表，你需要根據實際 JSON 結構調整
-      paragraphs: [],
-    )).toList();
-  } else {
-    throw Exception('Failed to load articles');
+  // 獲取最近三週的文章
+  for (int i = 0; i < 4; i++) {
+    final filename = getYearAndWeek(weeksAgo: i);
+    try {
+      final response = await http.get(
+        Uri.parse('https://linguaboost.uroi.xyz/$filename'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonData = json.decode(response.body);
+        final List<dynamic> articles = jsonData['Data'];
+        
+        allArticles.addAll(articles.map((article) => ArticleInfo(
+          title: article['title'],
+          difficulty: article['difficulty'].toDouble(),
+          id: article['id'],
+          paragraphs: [],
+        )));
+      }
+    } catch (e) {
+      print('Failed to fetch articles for week $i: $e');
+      // 繼續執行，即使某一週的數據獲取失敗
+      continue;
+    }
   }
+  
+  if (allArticles.isEmpty) {
+    throw Exception('Failed to load any articles');
+  }
+  
+  return allArticles;
 }
 
 class ArticlesScreen extends StatefulWidget {
